@@ -9,4 +9,10 @@ undertaking.
 
 ---
 
+### Why is it spelled "Mankalla" in the code?
+
+My friend misspelled it when we programmed the game for the first time, so I will stick with it until the end of time.
+
+---
+
 The state and action spaces of Mankala are both discrete, so Q-Learning will suffice as the first proof of concept.
