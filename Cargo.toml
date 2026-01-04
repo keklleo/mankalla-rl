@@ -1,0 +1,9 @@
+[package]
+name = "mankalla-rl"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "mankalla_rl"
+
+[dependencies]
