@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 pub struct MankallaGame {
     // 13 12 11 10  9  8  7
     //     0  1  2  3  4  5  6
@@ -10,6 +12,29 @@ pub struct MankallaGame {
 pub enum Player {
     Player1,
     Player2,
+}
+
+impl Display for MankallaGame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut result: String = "".to_owned();
+        result.push_str(
+            self.fields[7..14]
+                .iter()
+                .rev()
+                .map(|field| format!("{:>2}", field))
+                .collect::<String>()
+                .as_str(),
+        );
+        result.push_str("\n  ");
+        result.push_str(
+            self.fields[..7]
+                .iter()
+                .map(|field| format!("{:>2}", field))
+                .collect::<String>()
+                .as_str(),
+        );
+        write!(f, "{}", result)
+    }
 }
 
 impl Default for MankallaGame {
