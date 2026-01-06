@@ -1,2 +1,2 @@
 pub mod mankalla;
-pub mod rl;
+pub mod q_learning;

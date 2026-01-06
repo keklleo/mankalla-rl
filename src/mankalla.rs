@@ -1,8 +1,9 @@
-use crate::rl::Environment;
+use crate::q_learning::Environment;
 use std::fmt::Display;
 
 pub struct MankallaGame;
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MankallaGameState {
     // 13 12 11 10  9  8  7
     //     0  1  2  3  4  5  6
@@ -10,7 +11,7 @@ pub struct MankallaGameState {
     player_to_move: Player,
 }
 
-#[derive(PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Player {
     Player1,
     Player2,
@@ -19,7 +20,10 @@ pub enum Player {
 impl Environment for MankallaGame {
     type State = MankallaGameState;
     type Action = u8;
-    type Reward = i8;
+
+    fn new() -> MankallaGameState {
+        Default::default()
+    }
 
     fn actions(state: &Self::State) -> Vec<Self::Action> {
         let start = match state.player_to_move {
@@ -35,18 +39,20 @@ impl Environment for MankallaGame {
             .collect()
     }
 
-    fn step(mut state: Self::State, action: Self::Action) -> (Option<Self::State>, Self::Reward) {
+    fn step(state: &Self::State, action: &Self::Action) -> (Option<Self::State>, f32) {
+        let mut state = state.clone();
+
         let p1_points = state.get_points(&Player::Player1);
         let p2_points = state.get_points(&Player::Player2);
 
         let mut i: usize = match state.player_to_move {
             Player::Player1 => {
-                assert!(action < 6);
-                action as usize
+                assert!(*action < 6);
+                *action as usize
             }
             Player::Player2 => {
-                assert!(action < 6);
-                (action + 7) as usize
+                assert!(*action < 6);
+                (*action + 7) as usize
             }
         };
 
@@ -62,10 +68,10 @@ impl Environment for MankallaGame {
 
         let finished = state.handle_if_game_finished();
 
-        let mut reward = (state.get_points(&Player::Player1) - p1_points) as i8
-            - (state.get_points(&Player::Player2) - p2_points) as i8;
+        let mut reward = (state.get_points(&Player::Player1) - p1_points) as f32
+            - (state.get_points(&Player::Player2) - p2_points) as f32;
         if state.player_to_move == Player::Player2 {
-            reward *= -1;
+            reward *= -1f32;
         }
 
         if finished {
@@ -107,12 +113,6 @@ impl Default for MankallaGameState {
             fields: [6, 6, 6, 6, 6, 6, 0, 6, 6, 6, 6, 6, 6, 0],
             player_to_move: Player::Player1,
         }
-    }
-}
-
-impl MankallaGame {
-    pub fn new() -> MankallaGameState {
-        Default::default()
     }
 }
 
