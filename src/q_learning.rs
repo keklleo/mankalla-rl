@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
+use rand::seq::IndexedRandom;
+
 pub trait Environment {
     type State: Copy + Eq + Hash;
     type Action: Copy + Eq + Hash;
@@ -18,6 +20,7 @@ pub trait Policy<E: Environment> {
         reward: f32,
         next_state: Option<&E::State>,
     );
+    fn on_episode_increment(&mut self) {}
 }
 
 pub struct QLearning;
@@ -29,29 +32,34 @@ impl QLearning {
         max_steps: Option<usize>,
     ) {
         for _ in 0..num_training_episodes {
-            let mut state = E::new();
+            QLearning::one_episode(policy, max_steps);
+            policy.on_episode_increment();
+        }
+    }
 
-            if let Some(m) = max_steps {
-                for _ in 0..m {
-                    if let Some(next_state) = QLearning::one_iteration(policy, state) {
-                        state = next_state;
-                    } else {
-                        break;
-                    }
+    fn one_episode<E: Environment>(policy: &mut impl Policy<E>, max_steps: Option<usize>) {
+        let mut state = E::new();
+
+        if let Some(m) = max_steps {
+            for _ in 0..m {
+                if let Some(next_state) = QLearning::choose_and_improve(policy, state) {
+                    state = next_state;
+                } else {
+                    break;
                 }
-            } else {
-                loop {
-                    if let Some(next_state) = QLearning::one_iteration(policy, state) {
-                        state = next_state;
-                    } else {
-                        break;
-                    }
+            }
+        } else {
+            loop {
+                if let Some(next_state) = QLearning::choose_and_improve(policy, state) {
+                    state = next_state;
+                } else {
+                    break;
                 }
             }
         }
     }
 
-    fn one_iteration<E: Environment>(
+    fn choose_and_improve<E: Environment>(
         policy: &mut impl Policy<E>,
         state: E::State,
     ) -> Option<E::State> {
@@ -97,7 +105,7 @@ impl<E: Environment> Policy<E> for GreedyPolicy<E> {
                     + self.gamma
                         * self
                             .qtable
-                            .get(&(*next_state, self.choose_action(&next_state)))
+                            .get(&(*next_state, self.choose_action(next_state)))
                             .unwrap_or(&0f32)
             }
             None => 0f32,
@@ -110,8 +118,46 @@ impl<E: Environment> Policy<E> for GreedyPolicy<E> {
 }
 
 pub struct EpsilonGreedyPolicy<E: Environment> {
-    qtable: HashMap<(E::State, E::Action), f32>,
-    learning_rate: f32,
-    gamma: f32,
-    epsilon: f32,
+    greedy_policy: GreedyPolicy<E>,
+    min_epsilon: f32,
+    max_epsilon: f32,
+    decay_rate: f32,
+    episode: usize,
+}
+
+impl<E: Environment> EpsilonGreedyPolicy<E> {
+    fn epsilon(&self) -> f32 {
+        self.min_epsilon
+            + (self.max_epsilon - self.min_epsilon) * (-self.decay_rate * self.episode as f32).exp()
+    }
+}
+
+impl<E: Environment> Policy<E> for EpsilonGreedyPolicy<E> {
+    fn choose_action(&self, state: &<E as Environment>::State) -> <E as Environment>::Action {
+        let action: E::Action;
+        if rand::random_range(0f32..1f32) < self.epsilon() {
+            action = *E::actions(state).choose(&mut rand::rng()).expect(
+                "The way it is implemented now, there should always be possible actions (might be bad)",
+            );
+        } else {
+            action = self.greedy_policy.choose_action(state);
+        }
+
+        action
+    }
+
+    fn improve(
+        &mut self,
+        state: &<E as Environment>::State,
+        action: <E as Environment>::Action,
+        reward: f32,
+        next_state: Option<&<E as Environment>::State>,
+    ) {
+        self.greedy_policy
+            .improve(state, action, reward, next_state);
+    }
+
+    fn on_episode_increment(&mut self) {
+        self.episode += 1;
+    }
 }
