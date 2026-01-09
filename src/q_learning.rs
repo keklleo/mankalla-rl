@@ -1,11 +1,12 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::hash::Hash;
 
 use rand::seq::IndexedRandom;
 
 pub trait Environment {
-    type State: Copy + Eq + Hash;
-    type Action: Copy + Eq + Hash;
+    type State: Copy + Eq + Hash + Serialize + Deserialize;
+    type Action: Copy + Eq + Hash + Serialize + Deserialize;
     fn actions(state: &Self::State) -> Vec<Self::Action>;
     fn step(state: &Self::State, action: &Self::Action) -> (Option<Self::State>, f32);
     fn new() -> Self::State;
@@ -21,6 +22,24 @@ pub trait Policy<E: Environment> {
         next_state: Option<&E::State>,
     );
     fn on_episode_increment(&mut self) {}
+}
+
+pub trait Serialize {
+    fn serialize(&self) -> String;
+}
+
+pub trait Deserialize {
+    fn deserialize(input: &str) -> Result<Self, DeserializeError>
+    where
+        Self: Sized;
+}
+
+pub struct DeserializeError;
+
+impl Display for DeserializeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Error deserializing input")
+    }
 }
 
 pub struct QLearning;
@@ -117,6 +136,75 @@ impl<E: Environment> Policy<E> for GreedyPolicy<E> {
     }
 }
 
+impl<E: Environment> Serialize for GreedyPolicy<E> {
+    fn serialize(&self) -> String {
+        format!("{};{}", self.gamma, self.learning_rate)
+            + self
+                .qtable
+                .iter()
+                .map(|((state, action), value)| {
+                    format!("{};{};{}", state.serialize(), action.serialize(), value)
+                })
+                .reduce(|a, b| a + b.as_str() + "\n")
+                .unwrap_or(String::new())
+                .as_str()
+    }
+}
+
+impl<E: Environment> Deserialize for GreedyPolicy<E> {
+    fn deserialize(input: &str) -> Result<Self, DeserializeError> {
+        let mut lines = input.lines();
+
+        let mut parameters = match lines.next() {
+            Some(s) => s.split(';').map(|a| a.parse::<f32>()),
+            _ => return Result::Err(DeserializeError),
+        };
+        let gamma = match parameters.next() {
+            Some(Ok(f)) => f,
+            _ => return Result::Err(DeserializeError),
+        };
+        let learning_rate = match parameters.next() {
+            Some(Ok(f)) => f,
+            _ => return Result::Err(DeserializeError),
+        };
+        if parameters.next() != None {
+            return Result::Err(DeserializeError);
+        }
+
+        let mut qtable = HashMap::<(E::State, E::Action), f32>::new();
+        for line in lines {
+            let mut parts = line.split(';');
+            let state = match parts.next() {
+                Some(s) => E::State::deserialize(s)?,
+                _ => return Result::Err(DeserializeError),
+            };
+            let action = match parts.next() {
+                Some(a) => E::Action::deserialize(a)?,
+                _ => return Result::Err(DeserializeError),
+            };
+            let value_result = match parts.next() {
+                Some(v) => v.parse::<f32>(),
+                _ => return Result::Err(DeserializeError),
+            };
+            let value = match value_result {
+                Ok(v) => v,
+                _ => return Result::Err(DeserializeError),
+            };
+            if parts.next() != None {
+                return Result::Err(DeserializeError);
+            }
+
+            qtable.insert((state, action), value);
+        }
+
+        Ok(GreedyPolicy::<E> {
+            qtable,
+            gamma,
+            learning_rate,
+        })
+    }
+}
+
 pub struct EpsilonGreedyPolicy<E: Environment> {
     greedy_policy: GreedyPolicy<E>,
     min_epsilon: f32,
@@ -159,5 +247,54 @@ impl<E: Environment> Policy<E> for EpsilonGreedyPolicy<E> {
 
     fn on_episode_increment(&mut self) {
         self.episode += 1;
+    }
+}
+
+impl<E: Environment> Serialize for EpsilonGreedyPolicy<E> {
+    fn serialize(&self) -> String {
+        format!(
+            "{};{};{};{}",
+            self.min_epsilon, self.max_epsilon, self.decay_rate, self.episode
+        ) + self.greedy_policy.serialize().as_str()
+    }
+}
+
+impl<E: Environment> Deserialize for EpsilonGreedyPolicy<E> {
+    fn deserialize(input: &str) -> Result<Self, DeserializeError>
+    where
+        Self: Sized,
+    {
+        let (parts, rest) = match input.split_once('\n') {
+            Some(s) => s,
+            _ => return Result::Err(DeserializeError),
+        };
+        let mut parts = parts.split(';').map(|a| a.parse::<f32>());
+        let min_epsilon = match parts.next() {
+            Some(Ok(m)) => m,
+            _ => return Result::Err(DeserializeError),
+        };
+        let max_epsilon = match parts.next() {
+            Some(Ok(m)) => m,
+            _ => return Result::Err(DeserializeError),
+        };
+        let decay_rate = match parts.next() {
+            Some(Ok(d)) => d,
+            _ => return Result::Err(DeserializeError),
+        };
+        let episode = match parts.next() {
+            Some(Ok(e)) => e,
+            _ => return Result::Err(DeserializeError),
+        };
+        if parts.next() != None {
+            return Result::Err(DeserializeError);
+        }
+
+        Ok(EpsilonGreedyPolicy::<E> {
+            greedy_policy: GreedyPolicy::<E>::deserialize(rest)?,
+            min_epsilon,
+            max_epsilon,
+            decay_rate,
+            episode: episode as usize,
+        })
     }
 }
