@@ -193,12 +193,21 @@ impl MankallaGameState {
     }
 
     fn handle_steal(&mut self, i: usize) {
-        if self.fields[i] == 1 && self.player_to_move == Player::Player1 && i < 6 {
+        if self.fields[i] == 1
+            && self.player_to_move == Player::Player1
+            && i < 6
+            && self.fields[12 - i] > 0
+        {
             self.fields[6] += self.fields[i] + self.fields[12 - i];
             self.fields[i] = 0;
             self.fields[12 - i] = 0;
         }
-        if self.fields[i] == 1 && self.player_to_move == Player::Player2 && 6 < i && i < 13 {
+        if self.fields[i] == 1
+            && self.player_to_move == Player::Player2
+            && 6 < i
+            && i < 13
+            && self.fields[12 - i] > 0
+        {
             self.fields[13] += self.fields[i] + self.fields[12 - i];
             self.fields[i] = 0;
             self.fields[12 - i] = 0;
