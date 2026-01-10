@@ -1,4 +1,4 @@
-use crate::q_learning::Environment;
+use crate::q_learning::{Deserialize, DeserializeError, Environment, Serialize};
 use std::fmt::Display;
 
 pub struct MankallaGame;
@@ -19,19 +19,15 @@ pub enum Player {
 
 impl Environment for MankallaGame {
     type State = MankallaGameState;
+    type ActionRelevantState = [u8; 12];
     type Action = u8;
 
     fn new() -> MankallaGameState {
         Default::default()
     }
 
-    fn actions(state: &Self::State) -> Vec<Self::Action> {
-        let start = match state.player_to_move {
-            Player::Player1 => 0,
-            Player::Player2 => 7,
-        };
-
-        state.fields[start..start + 6]
+    fn actions(state: &Self::ActionRelevantState) -> Vec<Self::Action> {
+        state[..6]
             .iter()
             .enumerate()
             .filter(|&(_, num_marbles)| *num_marbles > 0)
@@ -81,6 +77,78 @@ impl Environment for MankallaGame {
         state.handle_switch_player(i);
 
         return (Some(state), reward);
+    }
+}
+
+impl Serialize for [u8; 12] {
+    fn serialize(&self) -> String {
+        self.iter()
+            .map(u8::to_string)
+            .reduce(|a, b| format!("{} {}", a, b))
+            .expect("I do not see how this slice could ever be empty")
+    }
+}
+
+impl Deserialize for [u8; 12] {
+    fn deserialize(input: &str) -> Result<Self, DeserializeError>
+    where
+        Self: Sized,
+    {
+        let mut count = 0;
+        let mut values: [u8; 12] = Default::default();
+        let elems = input
+            .split(' ')
+            .inspect(|_| count += 1)
+            .map(|a| match a.parse::<u8>() {
+                Ok(v) => Ok(v),
+                Err(_) => Err(DeserializeError),
+            });
+
+        for (i, elem) in elems.enumerate() {
+            if i >= 12 {
+                return Err(DeserializeError);
+            }
+            match elem {
+                Ok(v) => values[i] = v,
+                Err(e) => return Err(e),
+            }
+        }
+
+        if count != 12 {
+            return Err(DeserializeError);
+        }
+
+        Ok(values)
+    }
+}
+
+impl Serialize for u8 {
+    fn serialize(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl Deserialize for u8 {
+    fn deserialize(input: &str) -> Result<Self, DeserializeError>
+    where
+        Self: Sized,
+    {
+        match input.parse::<u8>() {
+            Ok(v) => Ok(v),
+            Err(_) => Err(DeserializeError),
+        }
+    }
+}
+
+impl From<MankallaGameState> for [u8; 12] {
+    fn from(value: MankallaGameState) -> Self {
+        let temp = match value.player_to_move {
+            Player::Player1 => [&value.fields[..6], &value.fields[7..13]],
+            Player::Player2 => [&value.fields[7..13], &value.fields[..6]],
+        };
+        temp.concat()
+            .try_into()
+            .expect("This should always be of length 12 by design")
     }
 }
 
