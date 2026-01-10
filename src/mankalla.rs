@@ -35,7 +35,7 @@ impl Environment for MankallaGame {
             .collect()
     }
 
-    fn step(state: &Self::State, action: &Self::Action) -> (Option<Self::State>, f32) {
+    fn step(state: &Self::State, action: &Self::Action) -> (Self::State, f32, bool) {
         let mut state = state.clone();
 
         let p1_points = state.get_points(&Player::Player1);
@@ -70,13 +70,9 @@ impl Environment for MankallaGame {
             reward *= -1f32;
         }
 
-        if finished {
-            return (None, reward);
-        }
-
         state.handle_switch_player(i);
 
-        return (Some(state), reward);
+        return (state, reward, finished);
     }
 }
 

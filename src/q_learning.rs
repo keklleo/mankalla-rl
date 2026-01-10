@@ -10,7 +10,7 @@ pub trait Environment {
     type ActionRelevantState: From<Self::State> + Copy + Eq + Hash + Serialize + Deserialize;
     type Action: Copy + Eq + Hash + Serialize + Deserialize;
     fn actions(state: &Self::ActionRelevantState) -> Vec<Self::Action>;
-    fn step(state: &Self::State, action: &Self::Action) -> (Option<Self::State>, f32);
+    fn step(state: &Self::State, action: &Self::Action) -> (Self::State, f32, bool);
     fn new() -> Self::State;
 }
 
@@ -21,7 +21,8 @@ pub trait Policy<E: Environment> {
         state: &E::ActionRelevantState,
         action: E::Action,
         reward: f32,
-        next_state: Option<&E::State>,
+        next_state: E::State,
+        finished: bool,
     );
     fn on_episode_increment(&mut self) {}
 }
@@ -66,7 +67,8 @@ impl QLearning {
 
         if let Some(m) = max_steps {
             for _ in 0..m {
-                if let Some(next_state) = QLearning::choose_and_improve(policy, state) {
+                let (next_state, finished) = QLearning::choose_and_improve(policy, state);
+                if !finished {
                     state = next_state;
                 } else {
                     break;
@@ -74,7 +76,8 @@ impl QLearning {
             }
         } else {
             loop {
-                if let Some(next_state) = QLearning::choose_and_improve(policy, state) {
+                let (next_state, finished) = QLearning::choose_and_improve(policy, state);
+                if !finished {
                     state = next_state;
                 } else {
                     break;
@@ -86,12 +89,12 @@ impl QLearning {
     fn choose_and_improve<E: Environment>(
         policy: &mut impl Policy<E>,
         state: E::State,
-    ) -> Option<E::State> {
+    ) -> (E::State, bool) {
         let action = policy.choose_action(state.into());
 
-        let (next_state, reward) = E::step(&state, &action);
-        policy.improve(&state.into(), action, reward, next_state.as_ref());
-        next_state
+        let (next_state, reward, finished) = E::step(&state, &action);
+        policy.improve(&state.into(), action, reward, next_state, finished);
+        (next_state, finished)
     }
 }
 
@@ -130,22 +133,20 @@ impl<E: Environment> Policy<E> for GreedyPolicy<E> {
         state: &E::ActionRelevantState,
         action: E::Action,
         reward: f32,
-        next_state: Option<&E::State>,
+        next_state: E::State,
+        finished: bool,
     ) {
         let former_value = *self.qtable.get(&(*state, action)).unwrap_or(&0f32);
-        let target = match next_state {
-            Some(next_state) => {
+        let target = match finished {
+            true => {
                 reward
                     + self.gamma
                         * self
                             .qtable
-                            .get(&(
-                                (*next_state).into(),
-                                self.choose_action((*next_state).into()),
-                            ))
+                            .get(&(next_state.into(), self.choose_action(next_state.into())))
                             .unwrap_or(&0f32)
             }
-            None => 0f32,
+            false => 0f32,
         };
         self.qtable.insert(
             (*state, action),
@@ -273,10 +274,11 @@ impl<E: Environment> Policy<E> for EpsilonGreedyPolicy<E> {
         state: &E::ActionRelevantState,
         action: E::Action,
         reward: f32,
-        next_state: Option<&E::State>,
+        next_state: E::State,
+        finished: bool,
     ) {
         self.greedy_policy
-            .improve(state, action, reward, next_state);
+            .improve(state, action, reward, next_state, finished);
     }
 
     fn on_episode_increment(&mut self) {
