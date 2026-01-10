@@ -156,14 +156,14 @@ impl<E: Environment> Policy<E> for GreedyPolicy<E> {
 
 impl<E: Environment> Serialize for GreedyPolicy<E> {
     fn serialize(&self) -> String {
-        format!("{};{}", self.gamma, self.learning_rate)
+        format!("{};{}\n", self.gamma, self.learning_rate)
             + self
                 .qtable
                 .iter()
                 .map(|((state, action), value)| {
-                    format!("{};{};{}", state.serialize(), action.serialize(), value)
+                    format!("{};{};{}\n", state.serialize(), action.serialize(), value)
                 })
-                .reduce(|a, b| a + b.as_str() + "\n")
+                .reduce(|a, b| a + b.as_str())
                 .unwrap_or(String::new())
                 .as_str()
     }
@@ -287,7 +287,7 @@ impl<E: Environment> Policy<E> for EpsilonGreedyPolicy<E> {
 impl<E: Environment> Serialize for EpsilonGreedyPolicy<E> {
     fn serialize(&self) -> String {
         format!(
-            "{};{};{};{}",
+            "{};{};{};{}\n",
             self.min_epsilon, self.max_epsilon, self.decay_rate, self.episode
         ) + self.greedy_policy.serialize().as_str()
     }
