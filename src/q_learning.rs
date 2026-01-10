@@ -97,6 +97,16 @@ pub struct GreedyPolicy<E: Environment> {
     gamma: f32,
 }
 
+impl<E: Environment> GreedyPolicy<E> {
+    pub fn new(learning_rate: f32, gamma: f32) -> Self {
+        GreedyPolicy {
+            qtable: HashMap::new(),
+            learning_rate,
+            gamma,
+        }
+    }
+}
+
 impl<E: Environment> Policy<E> for GreedyPolicy<E> {
     fn choose_action(&self, state: E::ActionRelevantState) -> E::Action {
         let actions = E::actions(&state);
@@ -218,6 +228,22 @@ pub struct EpsilonGreedyPolicy<E: Environment> {
 }
 
 impl<E: Environment> EpsilonGreedyPolicy<E> {
+    pub fn new(
+        learning_rate: f32,
+        gamma: f32,
+        max_epsilon: f32,
+        min_epsilon: f32,
+        decay_rate: f32,
+    ) -> Self {
+        EpsilonGreedyPolicy {
+            greedy_policy: GreedyPolicy::new(learning_rate, gamma),
+            min_epsilon,
+            max_epsilon,
+            decay_rate,
+            episode: 0,
+        }
+    }
+
     fn epsilon(&self) -> f32 {
         self.min_epsilon
             + (self.max_epsilon - self.min_epsilon) * (-self.decay_rate * self.episode as f32).exp()
