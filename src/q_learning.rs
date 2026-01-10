@@ -5,18 +5,19 @@ use std::hash::Hash;
 use rand::seq::IndexedRandom;
 
 pub trait Environment {
-    type State: Copy + Eq + Hash + Serialize + Deserialize;
+    type State: Copy;
+    type ActionRelevantState: From<Self::State> + Copy + Eq + Hash + Serialize + Deserialize;
     type Action: Copy + Eq + Hash + Serialize + Deserialize;
-    fn actions(state: &Self::State) -> Vec<Self::Action>;
+    fn actions(state: &Self::ActionRelevantState) -> Vec<Self::Action>;
     fn step(state: &Self::State, action: &Self::Action) -> (Option<Self::State>, f32);
     fn new() -> Self::State;
 }
 
 pub trait Policy<E: Environment> {
-    fn choose_action(&self, state: &E::State) -> E::Action;
+    fn choose_action(&self, state: E::ActionRelevantState) -> E::Action;
     fn improve(
         &mut self,
-        state: &E::State,
+        state: &E::ActionRelevantState,
         action: E::Action,
         reward: f32,
         next_state: Option<&E::State>,
@@ -82,28 +83,28 @@ impl QLearning {
         policy: &mut impl Policy<E>,
         state: E::State,
     ) -> Option<E::State> {
-        let action = policy.choose_action(&state);
+        let action = policy.choose_action(state.into());
 
         let (next_state, reward) = E::step(&state, &action);
-        policy.improve(&state, action, reward, next_state.as_ref());
+        policy.improve(&state.into(), action, reward, next_state.as_ref());
         next_state
     }
 }
 
 pub struct GreedyPolicy<E: Environment> {
-    qtable: HashMap<(E::State, E::Action), f32>,
+    qtable: HashMap<(E::ActionRelevantState, E::Action), f32>,
     learning_rate: f32,
     gamma: f32,
 }
 
 impl<E: Environment> Policy<E> for GreedyPolicy<E> {
-    fn choose_action(&self, state: &<E as Environment>::State) -> <E as Environment>::Action {
-        let actions = E::actions(state);
+    fn choose_action(&self, state: E::ActionRelevantState) -> E::Action {
+        let actions = E::actions(&state);
         *actions.iter()
             .max_by(|&a, &b|
-                self.qtable.get(&(*state, *a))
+                self.qtable.get(&(state, *a))
                     .unwrap_or(&0f32)
-                    .total_cmp(self.qtable.get(&(*state, *b))
+                    .total_cmp(self.qtable.get(&(state, *b))
                     .unwrap_or(&0f32))
             )
             .expect(
@@ -112,10 +113,10 @@ impl<E: Environment> Policy<E> for GreedyPolicy<E> {
     }
     fn improve(
         &mut self,
-        state: &<E as Environment>::State,
-        action: <E as Environment>::Action,
+        state: &E::ActionRelevantState,
+        action: E::Action,
         reward: f32,
-        next_state: Option<&<E as Environment>::State>,
+        next_state: Option<&E::State>,
     ) {
         let former_value = *self.qtable.get(&(*state, action)).unwrap_or(&0f32);
         let target = match next_state {
@@ -124,7 +125,10 @@ impl<E: Environment> Policy<E> for GreedyPolicy<E> {
                     + self.gamma
                         * self
                             .qtable
-                            .get(&(*next_state, self.choose_action(next_state)))
+                            .get(&(
+                                (*next_state).into(),
+                                self.choose_action((*next_state).into()),
+                            ))
                             .unwrap_or(&0f32)
             }
             None => 0f32,
@@ -157,41 +161,41 @@ impl<E: Environment> Deserialize for GreedyPolicy<E> {
 
         let mut parameters = match lines.next() {
             Some(s) => s.split(';').map(|a| a.parse::<f32>()),
-            _ => return Result::Err(DeserializeError),
+            _ => return Err(DeserializeError),
         };
         let gamma = match parameters.next() {
             Some(Ok(f)) => f,
-            _ => return Result::Err(DeserializeError),
+            _ => return Err(DeserializeError),
         };
         let learning_rate = match parameters.next() {
             Some(Ok(f)) => f,
-            _ => return Result::Err(DeserializeError),
+            _ => return Err(DeserializeError),
         };
         if parameters.next() != None {
-            return Result::Err(DeserializeError);
+            return Err(DeserializeError);
         }
 
-        let mut qtable = HashMap::<(E::State, E::Action), f32>::new();
+        let mut qtable = HashMap::<(E::ActionRelevantState, E::Action), f32>::new();
         for line in lines {
             let mut parts = line.split(';');
             let state = match parts.next() {
-                Some(s) => E::State::deserialize(s)?,
-                _ => return Result::Err(DeserializeError),
+                Some(s) => E::ActionRelevantState::deserialize(s)?,
+                _ => return Err(DeserializeError),
             };
             let action = match parts.next() {
                 Some(a) => E::Action::deserialize(a)?,
-                _ => return Result::Err(DeserializeError),
+                _ => return Err(DeserializeError),
             };
             let value_result = match parts.next() {
                 Some(v) => v.parse::<f32>(),
-                _ => return Result::Err(DeserializeError),
+                _ => return Err(DeserializeError),
             };
             let value = match value_result {
                 Ok(v) => v,
-                _ => return Result::Err(DeserializeError),
+                _ => return Err(DeserializeError),
             };
             if parts.next() != None {
-                return Result::Err(DeserializeError);
+                return Err(DeserializeError);
             }
 
             qtable.insert((state, action), value);
@@ -221,10 +225,10 @@ impl<E: Environment> EpsilonGreedyPolicy<E> {
 }
 
 impl<E: Environment> Policy<E> for EpsilonGreedyPolicy<E> {
-    fn choose_action(&self, state: &<E as Environment>::State) -> <E as Environment>::Action {
+    fn choose_action(&self, state: E::ActionRelevantState) -> E::Action {
         let action: E::Action;
         if rand::random_range(0f32..1f32) < self.epsilon() {
-            action = *E::actions(state).choose(&mut rand::rng()).expect(
+            action = *E::actions(&state).choose(&mut rand::rng()).expect(
                 "The way it is implemented now, there should always be possible actions (might be bad)",
             );
         } else {
@@ -236,10 +240,10 @@ impl<E: Environment> Policy<E> for EpsilonGreedyPolicy<E> {
 
     fn improve(
         &mut self,
-        state: &<E as Environment>::State,
-        action: <E as Environment>::Action,
+        state: &E::ActionRelevantState,
+        action: E::Action,
         reward: f32,
-        next_state: Option<&<E as Environment>::State>,
+        next_state: Option<&E::State>,
     ) {
         self.greedy_policy
             .improve(state, action, reward, next_state);
@@ -266,27 +270,27 @@ impl<E: Environment> Deserialize for EpsilonGreedyPolicy<E> {
     {
         let (parts, rest) = match input.split_once('\n') {
             Some(s) => s,
-            _ => return Result::Err(DeserializeError),
+            _ => return Err(DeserializeError),
         };
         let mut parts = parts.split(';').map(|a| a.parse::<f32>());
         let min_epsilon = match parts.next() {
             Some(Ok(m)) => m,
-            _ => return Result::Err(DeserializeError),
+            _ => return Err(DeserializeError),
         };
         let max_epsilon = match parts.next() {
             Some(Ok(m)) => m,
-            _ => return Result::Err(DeserializeError),
+            _ => return Err(DeserializeError),
         };
         let decay_rate = match parts.next() {
             Some(Ok(d)) => d,
-            _ => return Result::Err(DeserializeError),
+            _ => return Err(DeserializeError),
         };
         let episode = match parts.next() {
             Some(Ok(e)) => e,
-            _ => return Result::Err(DeserializeError),
+            _ => return Err(DeserializeError),
         };
         if parts.next() != None {
-            return Result::Err(DeserializeError);
+            return Err(DeserializeError);
         }
 
         Ok(EpsilonGreedyPolicy::<E> {
