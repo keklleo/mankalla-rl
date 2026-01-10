@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::error::Error;
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -35,7 +36,10 @@ pub trait Deserialize {
         Self: Sized;
 }
 
+#[derive(Debug)]
 pub struct DeserializeError;
+
+impl Error for DeserializeError {}
 
 impl Display for DeserializeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
