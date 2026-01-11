@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 fn game_loop(policy: &mut impl Policy<MankallaGame>) {
     let mut turn: usize = 1;
     let mut state = MankallaGame::new();
-    let mut finished = false;
+    let mut finished;
 
     println!("{}", state);
 
