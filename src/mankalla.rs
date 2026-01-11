@@ -181,6 +181,10 @@ impl Default for MankallaGameState {
 }
 
 impl MankallaGameState {
+    pub fn get_player_to_move(&self) -> Player {
+        self.player_to_move
+    }
+
     fn get_points(&self, player: &Player) -> u8 {
         match player {
             Player::Player1 => self.fields[6],

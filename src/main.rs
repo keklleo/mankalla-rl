@@ -5,7 +5,7 @@ use std::{
 };
 
 use mankalla_rl::{
-    mankalla::MankallaGame,
+    mankalla::{MankallaGame, MankallaGameState, Player},
     q_learning::{Deserialize, Environment, EpsilonGreedyPolicy, Policy, QLearning, Serialize},
 };
 
@@ -26,65 +26,103 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn game_loop(policy: &mut impl Policy<MankallaGame>) {
     let mut turn: usize = 1;
-    let state = MankallaGame::new();
+    let mut state = MankallaGame::new();
+    let mut finished = false;
 
     println!("{}", state);
 
-    println!("Choose your action: (0,1,2,3,4,5,q)");
-
     let stdin = io::stdin();
+
     let action;
-    loop {
-        match get_player_input(&stdin) {
-            PlayerRequest::Action(a) => {
-                action = a;
-                break;
-            }
-            PlayerRequest::Quit => {
-                println!("Ok, goodbye");
-                return;
-            }
-            PlayerRequest::Noop => {
-                println!("Well you gotta do something");
-                continue;
-            }
-            PlayerRequest::InvalidRequest => {
-                println!("That is not something you can do");
-                continue;
-            }
-        };
-    }
-    println!("Turn {turn}, you chose {action}");
+    match get_player_input(&stdin) {
+        PlayerRequest::Action(a) => {
+            action = a;
+        }
+        PlayerRequest::Quit => {
+            println!("Ok, goodbye");
+            return;
+        }
+    };
 
-    let (next_state, reward, finished) = MankallaGame::step(&state, &action);
+    (state, finished) = player_turn(state, action, policy, &mut turn);
     while !finished {
-        // TODO: Bot turn
+        match state.get_player_to_move() {
+            Player::Player2 => {
+                (state, finished) = bot_turn(state, policy, &mut turn);
+            }
+            Player::Player1 => {
+                let action;
+                match get_player_input(&stdin) {
+                    PlayerRequest::Action(a) => {
+                        action = a;
+                    }
+                    PlayerRequest::Quit => {
+                        println!("Ok, goodbye");
+                        return;
+                    }
+                };
 
-        turn += 1;
-
-        // TODO: Player turn
+                (state, finished) = player_turn(state, action, policy, &mut turn);
+            }
+        }
     }
 }
 
 enum PlayerRequest {
     Action(u8),
     Quit,
-    Noop,
-    InvalidRequest,
 }
 
 fn get_player_input(stdin: &Stdin) -> PlayerRequest {
-    let mut input = String::new();
-    stdin
-        .read_line(&mut input)
-        .expect("Something with stdin went wrong");
+    println!("Choose your action: (0,1,2,3,4,5,q)");
 
-    match input.as_str() {
-        digit @ ("0" | "1" | "2" | "3" | "4" | "5") => {
-            PlayerRequest::Action(digit.parse().expect("Guaranteed to work"))
+    let mut input = String::new();
+    loop {
+        stdin
+            .read_line(&mut input)
+            .expect("Something with stdin went wrong");
+
+        match input.as_str().strip_suffix("\n").unwrap_or("") {
+            digit @ ("0" | "1" | "2" | "3" | "4" | "5") => {
+                return PlayerRequest::Action(digit.parse().expect("Guaranteed to work"));
+            }
+            "q" => return PlayerRequest::Quit,
+            _ => continue,
         }
-        "q" => PlayerRequest::Quit,
-        "" => PlayerRequest::Noop,
-        _ => PlayerRequest::InvalidRequest,
     }
+}
+
+fn player_turn(
+    state: MankallaGameState,
+    action: u8,
+    policy: &mut impl Policy<MankallaGame>,
+    turn: &mut usize,
+) -> (MankallaGameState, bool) {
+    println!("Turn {turn}, you chose {action}");
+
+    let (next_state, reward, finished) = MankallaGame::step(&state, &action);
+    println!("{}", next_state);
+    policy.improve(state.into(), action, reward, next_state, finished);
+
+    *turn += 1;
+
+    (next_state, finished)
+}
+
+fn bot_turn(
+    state: MankallaGameState,
+    policy: &mut impl Policy<MankallaGame>,
+    turn: &mut usize,
+) -> (MankallaGameState, bool) {
+    let action = policy.choose_action(state.into());
+
+    println!("Turn {turn}, bot chose {action}");
+
+    let (next_state, reward, finished) = MankallaGame::step(&state, &action);
+    println!("{}", next_state);
+    policy.improve(state.into(), action, reward, next_state, finished);
+
+    *turn += 1;
+
+    (next_state, finished)
 }

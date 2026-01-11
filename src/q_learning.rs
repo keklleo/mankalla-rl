@@ -18,7 +18,7 @@ pub trait Policy<E: Environment> {
     fn choose_action(&self, state: E::ActionRelevantState) -> E::Action;
     fn improve(
         &mut self,
-        state: &E::ActionRelevantState,
+        state: E::ActionRelevantState,
         action: E::Action,
         reward: f32,
         next_state: E::State,
@@ -93,7 +93,7 @@ impl QLearning {
         let action = policy.choose_action(state.into());
 
         let (next_state, reward, finished) = E::step(&state, &action);
-        policy.improve(&state.into(), action, reward, next_state, finished);
+        policy.improve(state.into(), action, reward, next_state, finished);
         (next_state, finished)
     }
 }
@@ -130,13 +130,13 @@ impl<E: Environment> Policy<E> for GreedyPolicy<E> {
     }
     fn improve(
         &mut self,
-        state: &E::ActionRelevantState,
+        state: E::ActionRelevantState,
         action: E::Action,
         reward: f32,
         next_state: E::State,
         finished: bool,
     ) {
-        let former_value = *self.qtable.get(&(*state, action)).unwrap_or(&0f32);
+        let former_value = *self.qtable.get(&(state, action)).unwrap_or(&0f32);
         let target = match finished {
             true => {
                 reward
@@ -149,7 +149,7 @@ impl<E: Environment> Policy<E> for GreedyPolicy<E> {
             false => 0f32,
         };
         self.qtable.insert(
-            (*state, action),
+            (state, action),
             former_value + self.learning_rate * (target - former_value),
         );
     }
@@ -271,7 +271,7 @@ impl<E: Environment> Policy<E> for EpsilonGreedyPolicy<E> {
 
     fn improve(
         &mut self,
-        state: &E::ActionRelevantState,
+        state: E::ActionRelevantState,
         action: E::Action,
         reward: f32,
         next_state: E::State,
