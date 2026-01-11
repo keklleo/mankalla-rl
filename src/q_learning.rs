@@ -137,17 +137,17 @@ impl<E: Environment> Policy<E> for GreedyPolicy<E> {
         finished: bool,
     ) {
         let former_value = *self.qtable.get(&(state, action)).unwrap_or(&0f32);
-        let target = match finished {
-            true => {
-                reward
-                    + self.gamma
+        let target = reward
+            + match finished {
+                false => {
+                    self.gamma
                         * self
                             .qtable
                             .get(&(next_state.into(), self.choose_action(next_state.into())))
                             .unwrap_or(&0f32)
-            }
-            false => 0f32,
-        };
+                }
+                true => 0f32,
+            };
         self.qtable.insert(
             (state, action),
             former_value + self.learning_rate * (target - former_value),
